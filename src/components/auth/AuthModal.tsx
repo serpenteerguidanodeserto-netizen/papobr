@@ -224,9 +224,42 @@ export const AuthModal: React.FC = () => {
 
         {/* Mensagens de Feedback */}
         {errorMsg && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-2.5 text-xs text-red-700">
-            <AlertCircle size={16} className="shrink-0 mt-0.5" />
-            <span>{errorMsg}</span>
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-800">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle size={16} className="shrink-0 mt-0.5 text-red-600" />
+              <div className="flex-1">
+                <p className="font-semibold">{errorMsg}</p>
+                {errorMsg.includes('Google') && (
+                  <div className="mt-2.5 pt-2.5 border-t border-red-200">
+                    <p className="text-[11px] text-red-700 mb-2 font-medium">
+                      💡 Acesse sem bloqueios de pop-up ou autorização de domínio:
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setErrorMsg(null);
+                          signInAsDemoUser('Carlos Eduardo (PapoBR)', 'carloseduardo_br');
+                        }}
+                        className="flex-1 py-1.5 px-3 bg-[#167C49] hover:bg-[#115D38] text-white font-bold rounded-xl text-xs transition-colors cursor-pointer text-center"
+                      >
+                        ⚡ Entrar com 1 Clique (Carlos)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setErrorMsg(null);
+                          setMode('signup');
+                        }}
+                        className="py-1.5 px-3 bg-white border border-red-300 text-red-700 hover:bg-red-100/50 font-bold rounded-xl text-xs transition-colors cursor-pointer text-center"
+                      >
+                        Criar com E-mail
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -239,7 +272,7 @@ export const AuthModal: React.FC = () => {
 
         {/* Botão Google rápido */}
         {mode !== 'forgot' && (
-          <div className="mb-5">
+          <div className="mb-5 space-y-2">
             <button
               type="button"
               onClick={handleGoogleLogin}
@@ -267,22 +300,41 @@ export const AuthModal: React.FC = () => {
               <span>Continuar com Google</span>
             </button>
 
-            {/* Acesso rápido sem bloqueio de pop-up */}
-            <button
-              type="button"
-              onClick={() => signInAsDemoUser('Carlos Eduardo (PapoBR)', 'carloseduardo_br')}
-              className="w-full mt-2.5 flex items-center justify-center gap-2 py-2 px-3 bg-[#EAF5EE] hover:bg-[#167C49] hover:text-white text-[#167C49] text-xs font-bold rounded-2xl transition-colors cursor-pointer border border-[#167C49]/20"
-            >
-              <Sparkles size={14} className="text-[#F3C84B]" />
-              <span>⚡ Entrar Imediatamente (Acesso Rápido de Teste)</span>
-            </button>
+            {/* Acesso rápido sem bloqueio de pop-up com seleção de usuário de teste */}
+            <div className="bg-[#EAF5EE] rounded-2xl p-2.5 border border-[#167C49]/20">
+              <div className="flex items-center justify-between mb-1.5 px-1">
+                <span className="text-[11px] font-bold text-[#167C49] flex items-center gap-1.5">
+                  <Sparkles size={13} className="text-[#F3C84B] fill-[#F3C84B]" />
+                  Acesso Imediato (Perfis de Demonstração)
+                </span>
+                <span className="text-[10px] bg-[#167C49]/10 text-[#167C49] px-1.5 py-0.5 rounded-full font-semibold">1 clique</span>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => signInAsDemoUser('Carlos Eduardo (PapoBR)', 'carloseduardo_br')}
+                  className="py-1.5 px-2 bg-white hover:bg-[#167C49] hover:text-white text-[#163D2B] text-xs font-semibold rounded-xl transition-all cursor-pointer shadow-xs border border-[#167C49]/15 text-left flex items-center gap-1.5"
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                  <span className="truncate">Carlos (RJ)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => signInAsDemoUser('Maria Silva (PapoBR)', 'mariasilva_sp')}
+                  className="py-1.5 px-2 bg-white hover:bg-[#167C49] hover:text-white text-[#163D2B] text-xs font-semibold rounded-xl transition-all cursor-pointer shadow-xs border border-[#167C49]/15 text-left flex items-center gap-1.5"
+                >
+                  <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                  <span className="truncate">Maria (SP)</span>
+                </button>
+              </div>
+            </div>
 
-            <div className="relative my-4">
+            <div className="relative my-3">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-[#E5EBE7]" />
               </div>
               <div className="relative flex justify-center text-xs">
-                <span className="bg-white px-3 text-[#738078]">ou com seu e-mail</span>
+                <span className="bg-white px-3 text-[#738078]">ou acesse com seu e-mail</span>
               </div>
             </div>
           </div>

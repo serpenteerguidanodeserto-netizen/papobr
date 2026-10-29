@@ -162,28 +162,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsAuthModalOpen(false);
     } catch (err: unknown) {
       const fbErr = err as { code?: string; message?: string };
+      const errString = String(fbErr?.code || fbErr?.message || err);
       console.warn('Erro ao autenticar com Google:', fbErr.code, fbErr.message);
 
-      if (fbErr.code === 'auth/unauthorized-domain') {
+      if (errString.includes('unauthorized-domain')) {
         throw new Error(
-          'O domínio da aplicação de teste (run.app) precisa ser adicionado no console do Firebase (Authentication > Settings > Authorized Domains). Você pode entrar agora mesmo usando a opção de E-mail/Senha ou o botão de Acesso Rápido abaixo!'
+          'O domínio do ambiente de teste precisa ser adicionado no console do Firebase (Authentication > Settings > Authorized Domains). Utilize o Acesso Rápido ou E-mail abaixo para entrar imediatamente!'
         );
       }
-      if (fbErr.code === 'auth/popup-blocked') {
+      if (errString.includes('popup-blocked')) {
         throw new Error(
-          'A janela pop-up do Google foi bloqueada pelo navegador. Permita pop-ups para esta página ou crie sua conta com E-mail/Senha.'
+          'A janela pop-up do Google foi bloqueada pelo navegador. Permita pop-ups para esta página ou use o Acesso Rápido.'
         );
       }
-      if (fbErr.code === 'auth/popup-closed-by-user') {
+      if (errString.includes('popup-closed-by-user')) {
         throw new Error('A janela de login do Google foi fechada antes da confirmação.');
       }
-      if (fbErr.code === 'auth/operation-not-allowed') {
+      if (errString.includes('operation-not-allowed')) {
         throw new Error(
-          'O login com Google não está ativado no Firebase Console. Utilize a opção de cadastro com E-mail e Senha.'
+          'O provedor Google precisa ser ativado no Firebase Console (Authentication > Sign-in method). Você pode criar sua conta com E-mail ou usar o Acesso Rápido!'
         );
       }
 
-      throw new Error(fbErr.message || 'Não foi possível entrar com o Google. Tente novamente.');
+      throw new Error(
+        'Não foi possível entrar com o Google no ambiente de teste. Utilize o botão de Acesso Rápido de Teste ou crie sua conta com E-mail e Senha abaixo!'
+      );
     }
   };
 

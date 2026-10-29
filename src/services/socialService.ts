@@ -389,6 +389,30 @@ export async function createMarketplaceItem(
   }
 }
 
+export async function updateMarketplaceItem(
+  itemId: string,
+  data: Partial<MarketplaceItem>
+) {
+  try {
+    const docRef = doc(db, 'marketplace', itemId);
+    await updateDoc(docRef, data);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `marketplace/${itemId}`);
+    throw error;
+  }
+}
+
+export async function deleteMarketplaceItem(itemId: string) {
+  try {
+    const docRef = doc(db, 'marketplace', itemId);
+    await deleteDoc(docRef);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `marketplace/${itemId}`);
+    throw error;
+  }
+}
+
+
 /* ----------------------------------------------------
    PAPO VÍDEOS (VÍDEOS CURTOS)
 ---------------------------------------------------- */
