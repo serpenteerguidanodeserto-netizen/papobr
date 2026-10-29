@@ -86,9 +86,10 @@ export function formatCompactNumber(num: number): string {
 }
 
 /**
- * Compresses an image client-side to prevent Firestore document limits.
+ * Compresses an image client-side to prevent Firestore document 1MB limits.
+ * Constrains maximum dimension to 800px and outputs a high-efficiency JPEG.
  */
-export async function compressImage(file: File, maxWidth = 1000, quality = 0.8): Promise<string> {
+export async function compressImage(file: File, maxDimension = 800, quality = 0.65): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -96,12 +97,16 @@ export async function compressImage(file: File, maxWidth = 1000, quality = 0.8):
       const img = new Image();
       img.src = event.target?.result as string;
       img.onload = () => {
-        let width = img.width;
-        let height = img.height;
+        let { width, height } = img;
 
-        if (width > maxWidth) {
-          height = Math.round((height * maxWidth) / width);
-          width = maxWidth;
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
         }
 
         const canvas = document.createElement('canvas');

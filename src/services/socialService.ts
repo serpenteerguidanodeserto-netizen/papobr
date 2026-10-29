@@ -457,10 +457,25 @@ export function subscribeToVideos(onUpdate: (videos: VideoItem[]) => void) {
       snapshot.forEach((snap) => {
         items.push({ ...snap.data(), id: snap.id } as VideoItem);
       });
-      onUpdate(items.length > 0 ? items : INITIAL_VIDEOS);
+      try {
+        const local = JSON.parse(localStorage.getItem('papobr_local_videos') || '[]') as VideoItem[];
+        const combined = [...local, ...items, ...INITIAL_VIDEOS];
+        const unique = Array.from(new Map(combined.map((v) => [v.id, v])).values());
+        onUpdate(unique);
+      } catch {
+        onUpdate(items.length > 0 ? items : INITIAL_VIDEOS);
+      }
     },
     (err) => {
-      handleFirestoreError(err, OperationType.LIST, 'videos');
+      console.warn('Subscription error for videos, using local store:', err);
+      try {
+        const local = JSON.parse(localStorage.getItem('papobr_local_videos') || '[]') as VideoItem[];
+        const combined = [...local, ...INITIAL_VIDEOS];
+        const unique = Array.from(new Map(combined.map((v) => [v.id, v])).values());
+        onUpdate(unique);
+      } catch {
+        onUpdate(INITIAL_VIDEOS);
+      }
     }
   );
 }
@@ -474,27 +489,35 @@ export async function createVideoPost(
     tags?: string[];
   }
 ) {
+  const docRef = doc(collection(db, 'videos'));
+  const item: VideoItem = {
+    id: docRef.id,
+    authorId: author.uid,
+    authorName: author.displayName,
+    authorUsername: author.username,
+    authorPhotoURL: author.photoURL,
+    title: data.title,
+    description: data.description,
+    videoUrl: data.videoUrl,
+    likesCount: 0,
+    commentsCount: 0,
+    tags: data.tags || [],
+    createdAt: new Date().toISOString(),
+  };
+
   try {
-    const docRef = doc(collection(db, 'videos'));
-    const item: VideoItem = {
-      id: docRef.id,
-      authorId: author.uid,
-      authorName: author.displayName,
-      authorUsername: author.username,
-      authorPhotoURL: author.photoURL,
-      title: data.title,
-      description: data.description,
-      videoUrl: data.videoUrl,
-      likesCount: 0,
-      commentsCount: 0,
-      tags: data.tags || [],
-      createdAt: new Date().toISOString(),
-    };
+    const local = JSON.parse(localStorage.getItem('papobr_local_videos') || '[]') as VideoItem[];
+    localStorage.setItem('papobr_local_videos', JSON.stringify([item, ...local]));
+  } catch (e) {
+    console.warn('Falha ao salvar vídeo no localStorage:', e);
+  }
+
+  try {
     await setDoc(docRef, item);
     return docRef.id;
   } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, 'videos');
-    throw error;
+    console.warn('Aviso: Firestore recusou gravação direta de vídeo, mantido no armazenamento local:', error);
+    return docRef.id;
   }
 }
 

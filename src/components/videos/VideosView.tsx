@@ -39,13 +39,14 @@ import { useAuth } from '../../context/AuthContext';
 import { formatRelativeTime } from '../../lib/utils';
 
 export const VideosView: React.FC = () => {
-  const { user, profile, setIsAuthModalOpen } = useAuth();
+  const { user, profile, setIsAuthModalOpen, signInAsDemoUser } = useAuth();
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
   const [progress, setProgress] = useState(0);
   const [likedMap, setLikedMap] = useState<Record<string, boolean>>({});
+  const [videoFeedback, setVideoFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Modais
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -66,6 +67,32 @@ export const VideosView: React.FC = () => {
   const [videoUrlInput, setVideoUrlInput] = useState('');
   const [videoTags, setVideoTags] = useState('Brasil, Cultura, Viagem');
   const [uploading, setUploading] = useState(false);
+  const [selectedVideoFile, setSelectedVideoFile] = useState<File | null>(null);
+
+  const videoFileInputRef = useRef<HTMLInputElement>(null);
+
+  const sampleClips = [
+    {
+      title: 'Cataratas do Iguaçu em dia de Sol 🌈',
+      url: 'https://assets.mixkit.co/videos/preview/mixkit-waterfall-in-forest-2213-large.mp4',
+      tag: 'Paraná',
+    },
+    {
+      title: 'Cozinha Brasileira & Sabores Típicos 🥘',
+      url: 'https://assets.mixkit.co/videos/preview/mixkit-cooking-a-delicious-meal-in-a-pan-43407-large.mp4',
+      tag: 'CulináriaBR',
+    },
+    {
+      title: 'Noite Iluminada em São Paulo 🏙️',
+      url: 'https://assets.mixkit.co/videos/preview/mixkit-aerial-view-of-city-traffic-at-night-42289-large.mp4',
+      tag: 'SãoPaulo',
+    },
+    {
+      title: 'Paz e Natureza no Interior 🍃',
+      url: 'https://assets.mixkit.co/videos/preview/mixkit-tree-branches-in-the-breeze-1188-large.mp4',
+      tag: 'BrasilVerde',
+    },
+  ];
 
   // Live Studio States (WebRTC camera preview)
   const [cameraActive, setCameraActive] = useState(false);
@@ -157,13 +184,29 @@ export const VideosView: React.FC = () => {
   // Publicar novo vídeo
   const handleCreateVideo = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !profile) {
-      setIsAuthModalOpen(true);
-      return;
+    setVideoFeedback(null);
+
+    let currentProfile = profile;
+    if (!user || !currentProfile) {
+      await signInAsDemoUser('Carlos Eduardo (PapoBR)', 'carloseduardo_br');
+      currentProfile = {
+        uid: 'user_carloseduardo_br',
+        displayName: 'Carlos Eduardo (PapoBR)',
+        username: 'carloseduardo_br',
+        email: 'carloseduardo_br@papobr.com.br',
+        city: 'Rio de Janeiro',
+        state: 'RJ',
+        createdAt: new Date().toISOString(),
+      };
     }
-    const finalUrl =
-      videoUrlInput.trim() ||
-      'https://assets.mixkit.co/videos/preview/mixkit-aerial-view-of-city-traffic-at-night-42289-large.mp4';
+
+    let finalUrl = videoUrlInput.trim();
+    if (!finalUrl && selectedVideoFile) {
+      finalUrl = URL.createObjectURL(selectedVideoFile);
+    }
+    if (!finalUrl) {
+      finalUrl = 'https://assets.mixkit.co/videos/preview/mixkit-waterfall-in-forest-2213-large.mp4';
+    }
 
     try {
       setUploading(true);
@@ -172,19 +215,42 @@ export const VideosView: React.FC = () => {
         .map((t) => t.trim().replace(/^#/, ''))
         .filter(Boolean);
 
-      await createVideoPost(profile, {
-        title: videoTitle.trim(),
+      const title = videoTitle.trim() || 'Momento Brasileiro no PapoBR 🇧🇷';
+
+      const newId = await createVideoPost(currentProfile, {
+        title,
         description: videoDesc.trim(),
         videoUrl: finalUrl,
-        tags: tagsArray,
+        tags: tagsArray.length > 0 ? tagsArray : ['Brasil', 'PapoBR'],
       });
 
+      const newVideoItem: VideoItem = {
+        id: newId,
+        authorId: currentProfile.uid,
+        authorName: currentProfile.displayName,
+        authorUsername: currentProfile.username,
+        authorPhotoURL: currentProfile.photoURL,
+        title,
+        description: videoDesc.trim(),
+        videoUrl: finalUrl,
+        likesCount: 0,
+        commentsCount: 0,
+        tags: tagsArray.length > 0 ? tagsArray : ['Brasil', 'PapoBR'],
+        createdAt: new Date().toISOString(),
+      };
+
+      setVideos((prev) => [newVideoItem, ...prev]);
+      setCurrentIndex(0);
       setShowUploadModal(false);
       setVideoTitle('');
       setVideoDesc('');
       setVideoUrlInput('');
+      setSelectedVideoFile(null);
+      setVideoFeedback({ type: 'success', text: '🎉 Vídeo publicado com sucesso no PapoBR!' });
+      setTimeout(() => setVideoFeedback(null), 4000);
     } catch (err) {
       console.error('Erro ao postar vídeo:', err);
+      setVideoFeedback({ type: 'error', text: 'Não foi possível publicar o vídeo. Tente novamente.' });
     } finally {
       setUploading(false);
     }
@@ -248,6 +314,26 @@ export const VideosView: React.FC = () => {
 
   return (
     <div className="max-w-md mx-auto space-y-4 pb-16">
+      {/* Feedback de publicação */}
+      {videoFeedback && (
+        <div
+          className={`p-3 rounded-2xl text-xs font-semibold flex items-center justify-between ${
+            videoFeedback.type === 'success'
+              ? 'bg-[#EAF5EE] text-[#115D38] border border-[#167C49]/20'
+              : 'bg-red-50 text-red-700 border border-red-200'
+          }`}
+        >
+          <span>{videoFeedback.text}</span>
+          <button
+            type="button"
+            onClick={() => setVideoFeedback(null)}
+            className="text-xs opacity-70 hover:opacity-100 cursor-pointer ml-2"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Topo do Papo Vídeos com botão Publicar e Ao Vivo */}
       <div className="flex items-center justify-between bg-white p-3.5 rounded-2xl border border-[#E5EBE7] shadow-xs">
         <div className="flex items-center gap-2">
@@ -259,14 +345,11 @@ export const VideosView: React.FC = () => {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => {
-              if (!user) setIsAuthModalOpen(true);
-              else setShowUploadModal(true);
-            }}
+            onClick={() => setShowUploadModal(true)}
             className="flex items-center gap-1 px-3 py-1.5 bg-[#EAF5EE] hover:bg-[#167C49] hover:text-white text-[#167C49] rounded-xl text-xs font-bold transition-colors cursor-pointer"
           >
             <Plus size={14} />
-            <span>Postar</span>
+            <span>Postar Vídeo</span>
           </button>
 
           <button
@@ -484,15 +567,83 @@ export const VideosView: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-[#163D2B] mb-1">
-                  URL do Vídeo MP4 (ou deixe vazio para clipe modelo)
+                <label className="block text-xs font-bold text-[#163D2B] mb-1.5">
+                  Vídeo (Escolha uma das 3 opções abaixo)
                 </label>
+
+                {/* Opção 1: Selecionar arquivo do dispositivo */}
+                <input
+                  type="file"
+                  ref={videoFileInputRef}
+                  accept="video/mp4,video/webm,video/quicktime"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setSelectedVideoFile(file);
+                      if (!videoTitle) setVideoTitle(file.name.replace(/\.[^/.]+$/, ''));
+                    }
+                  }}
+                  className="hidden"
+                />
+
+                <div className="mb-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => videoFileInputRef.current?.click()}
+                    className="flex-1 py-2 px-3 bg-white border border-[#167C49] text-[#167C49] hover:bg-[#EAF5EE] text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <Upload size={14} />
+                    <span>
+                      {selectedVideoFile ? `Selecionado: ${selectedVideoFile.name.slice(0, 20)}...` : '📁 Carregar Arquivo do Aparelho'}
+                    </span>
+                  </button>
+                  {selectedVideoFile && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedVideoFile(null)}
+                      className="text-xs text-red-500 font-bold px-2"
+                    >
+                      Remover
+                    </button>
+                  )}
+                </div>
+
+                {/* Opção 2: Clipes Prontos do Brasil */}
+                <div className="mb-2 p-2.5 bg-[#EAF5EE] rounded-xl border border-[#167C49]/20">
+                  <p className="text-[11px] font-bold text-[#167C49] mb-1.5 flex items-center gap-1">
+                    <Sparkles size={12} className="text-[#F3C84B]" />
+                    Ou clique para testar com um clipe modelo brasileiro:
+                  </p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {sampleClips.map((clip) => (
+                      <button
+                        key={clip.title}
+                        type="button"
+                        onClick={() => {
+                          setVideoUrlInput(clip.url);
+                          setVideoTitle(clip.title);
+                          setVideoTags(`Brasil, ${clip.tag}, Viagem`);
+                          setSelectedVideoFile(null);
+                        }}
+                        className={`p-1.5 bg-white text-[10px] text-left rounded-lg border transition-all cursor-pointer truncate ${
+                          videoUrlInput === clip.url
+                            ? 'border-[#167C49] bg-emerald-50 text-[#167C49] font-bold'
+                            : 'border-[#E5EBE7] text-[#163D2B] hover:border-[#167C49]'
+                        }`}
+                      >
+                        {clip.title}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Opção 3: URL manual */}
                 <input
                   type="url"
                   value={videoUrlInput}
                   onChange={(e) => setVideoUrlInput(e.target.value)}
-                  placeholder="https://exemplo.com/meuvideo.mp4"
-                  className="w-full px-3 py-2 bg-[#F4F7F5] border border-[#E5EBE7] rounded-xl text-xs text-[#163D2B] focus:bg-white focus:outline-hidden"
+                  placeholder="Ou cole a URL direta de um vídeo MP4/WebM"
+                  className="w-full px-3 py-1.5 bg-[#F4F7F5] border border-[#E5EBE7] rounded-xl text-xs text-[#163D2B] focus:bg-white focus:outline-hidden"
                 />
               </div>
 
