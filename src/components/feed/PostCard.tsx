@@ -14,6 +14,7 @@ import {
   MapPin,
   Check,
   X,
+  Edit2,
 } from 'lucide-react';
 import { Post, Comment } from '../../types';
 import { useAuth } from '../../context/AuthContext';
@@ -24,6 +25,7 @@ import {
   addCommentToPost,
   deletePostById,
   deleteCommentFromPost,
+  updateCommentInPost,
 } from '../../services/postsService';
 import { formatRelativeTime } from '../../lib/utils';
 
@@ -48,6 +50,8 @@ export const PostCard: React.FC<PostCardProps> = ({
   const [copiedLink, setCopiedLink] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState('');
 
   // Sync like state from Firestore
   useEffect(() => {
@@ -133,6 +137,22 @@ export const PostCard: React.FC<PostCardProps> = ({
       await deleteCommentFromPost(post.id, commentId);
     } catch (err) {
       console.error('Erro ao excluir comentário:', err);
+    }
+  };
+
+  const handleStartEditComment = (comment: Comment) => {
+    setEditingCommentId(comment.id);
+    setEditingCommentText(comment.content);
+  };
+
+  const handleSaveEditComment = async (commentId: string) => {
+    if (!editingCommentText.trim()) return;
+    try {
+      await updateCommentInPost(post.id, commentId, editingCommentText.trim());
+      setEditingCommentId(null);
+      setEditingCommentText('');
+    } catch (err) {
+      console.error('Erro ao editar comentário:', err);
     }
   };
 
@@ -392,6 +412,16 @@ export const PostCard: React.FC<PostCardProps> = ({
                           <span className="text-[10px] text-[#738078]">
                             {formatRelativeTime(c.createdAt)}
                           </span>
+                          {user?.uid === c.authorId && editingCommentId !== c.id && (
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditComment(c)}
+                              className="text-gray-400 hover:text-[#167C49] p-0.5 rounded transition-colors cursor-pointer"
+                              title="Editar comentário"
+                            >
+                              <Edit2 size={12} />
+                            </button>
+                          )}
                           {(user?.uid === c.authorId || user?.uid === post.authorId) && (
                             <button
                               type="button"
@@ -404,7 +434,36 @@ export const PostCard: React.FC<PostCardProps> = ({
                           )}
                         </div>
                       </div>
-                      <p className="text-[#163D2B] leading-relaxed">{c.content}</p>
+
+                      {editingCommentId === c.id ? (
+                        <div className="mt-1 space-y-1.5">
+                          <input
+                            type="text"
+                            value={editingCommentText}
+                            onChange={(e) => setEditingCommentText(e.target.value)}
+                            className="w-full bg-white border border-[#167C49] rounded-lg px-2.5 py-1 text-xs text-[#163D2B] focus:outline-hidden"
+                            autoFocus
+                          />
+                          <div className="flex justify-end gap-1.5 text-[11px]">
+                            <button
+                              type="button"
+                              onClick={() => setEditingCommentId(null)}
+                              className="px-2 py-0.5 text-[#738078] hover:bg-gray-200 rounded font-medium cursor-pointer"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSaveEditComment(c.id)}
+                              className="px-2.5 py-0.5 bg-[#167C49] text-white rounded font-bold hover:bg-[#115D38] cursor-pointer"
+                            >
+                              Salvar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-[#163D2B] leading-relaxed">{c.content}</p>
+                      )}
                     </div>
                   </div>
                 ))}

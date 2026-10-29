@@ -80,6 +80,8 @@ export interface Message {
   conversationId: string;
   senderId: string;
   text: string;
+  isRead?: boolean;
+  readAt?: string;
   createdAt: string;
 }
 

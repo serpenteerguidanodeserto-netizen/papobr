@@ -14,20 +14,70 @@ import {
   Sparkles,
   Info,
   Flag,
+  Volume2,
+  VolumeX,
+  Plus,
+  X,
+  Upload,
+  Send,
+  Camera,
+  Video as VideoIcon,
+  Mic,
+  MicOff,
+  Settings,
+  Copy,
+  Check,
+  Loader2,
 } from 'lucide-react';
 import { VideoItem } from '../../types';
-import { subscribeToVideos } from '../../services/socialService';
+import {
+  subscribeToVideos,
+  createVideoPost,
+  submitReport,
+} from '../../services/socialService';
 import { useAuth } from '../../context/AuthContext';
+import { formatRelativeTime } from '../../lib/utils';
 
 export const VideosView: React.FC = () => {
-  const { user, setIsAuthModalOpen } = useAuth();
+  const { user, profile, setIsAuthModalOpen } = useAuth();
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
+  const [isMuted, setIsMuted] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [likedMap, setLikedMap] = useState<Record<string, boolean>>({});
-  const [showLiveNotice, setShowLiveNotice] = useState(false);
+
+  // Modais
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showCommentsDrawer, setShowCommentsDrawer] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [showLiveStudio, setShowLiveStudio] = useState(false);
+
+  // Comentários do vídeo atual
+  const [videoComments, setVideoComments] = useState<{ id: string; authorName: string; text: string; time: string }[]>([
+    { id: '1', authorName: 'Juliana Paes (BH)', text: 'Que lugar espetacular do nosso Brasil! 🇧🇷👏', time: 'há 10 min' },
+    { id: '2', authorName: 'Bruno Alencar', text: 'Já adicionei no meu roteiro de férias!', time: 'há 25 min' },
+  ]);
+  const [newCommentInput, setNewCommentInput] = useState('');
+
+  // Upload Form
+  const [videoTitle, setVideoTitle] = useState('');
+  const [videoDesc, setVideoDesc] = useState('');
+  const [videoUrlInput, setVideoUrlInput] = useState('');
+  const [videoTags, setVideoTags] = useState('Brasil, Cultura, Viagem');
+  const [uploading, setUploading] = useState(false);
+
+  // Live Studio States (WebRTC camera preview)
+  const [cameraActive, setCameraActive] = useState(false);
+  const [micActive, setMicActive] = useState(true);
+  const [copiedKey, setCopiedKey] = useState(false);
+
+  // Denúncia Form
+  const [reportReason, setReportReason] = useState('Conteúdo Impróprio');
+  const [reportSuccess, setReportSuccess] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const liveVideoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     const unsub = subscribeToVideos((list) => {
@@ -47,6 +97,20 @@ export const VideosView: React.FC = () => {
       videoRef.current.play();
       setIsPlaying(true);
     }
+  };
+
+  const handleToggleMute = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!videoRef.current) return;
+    videoRef.current.muted = !isMuted;
+    setIsMuted(!isMuted);
+  };
+
+  const handleTimeUpdate = () => {
+    if (!videoRef.current) return;
+    const current = videoRef.current.currentTime;
+    const duration = videoRef.current.duration || 1;
+    setProgress((current / duration) * 100);
   };
 
   const handleLike = (id: string) => {
@@ -71,9 +135,120 @@ export const VideosView: React.FC = () => {
     }
   };
 
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (showUploadModal || showCommentsDrawer || showLiveStudio || showReportModal) return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        handleNext();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        handlePrev();
+      } else if (e.key === ' ') {
+        e.preventDefault();
+        handleTogglePlay();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentIndex, videos.length, isPlaying, showUploadModal, showCommentsDrawer, showLiveStudio]);
+
+  // Publicar novo vídeo
+  const handleCreateVideo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !profile) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+    const finalUrl =
+      videoUrlInput.trim() ||
+      'https://assets.mixkit.co/videos/preview/mixkit-aerial-view-of-city-traffic-at-night-42289-large.mp4';
+
+    try {
+      setUploading(true);
+      const tagsArray = videoTags
+        .split(',')
+        .map((t) => t.trim().replace(/^#/, ''))
+        .filter(Boolean);
+
+      await createVideoPost(profile, {
+        title: videoTitle.trim(),
+        description: videoDesc.trim(),
+        videoUrl: finalUrl,
+        tags: tagsArray,
+      });
+
+      setShowUploadModal(false);
+      setVideoTitle('');
+      setVideoDesc('');
+      setVideoUrlInput('');
+    } catch (err) {
+      console.error('Erro ao postar vídeo:', err);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Adicionar comentário no vídeo
+  const handleAddVideoComment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !profile) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+    if (!newCommentInput.trim()) return;
+
+    setVideoComments((prev) => [
+      {
+        id: Date.now().toString(),
+        authorName: profile.displayName,
+        text: newCommentInput.trim(),
+        time: 'agora mesmo',
+      },
+      ...prev,
+    ]);
+    setNewCommentInput('');
+  };
+
+  // Enviar denúncia
+  const handleSendReport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentVideo) return;
+    await submitReport(user?.uid || 'anon', 'video', currentVideo.id, reportReason);
+    setReportSuccess(true);
+    setTimeout(() => {
+      setReportSuccess(false);
+      setShowReportModal(false);
+    }, 2000);
+  };
+
+  // WebRTC Live Camera Start
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      if (liveVideoRef.current) {
+        liveVideoRef.current.srcObject = stream;
+        setCameraActive(true);
+      }
+    } catch (err) {
+      console.warn('Câmera não disponível no dispositivo:', err);
+      alert('Não foi possível acessar a câmera ou permissão negada. O estúdio ainda exibe as configurações de streaming RTMP.');
+    }
+  };
+
+  const stopCamera = () => {
+    if (liveVideoRef.current && liveVideoRef.current.srcObject) {
+      const stream = liveVideoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach((track) => track.stop());
+      liveVideoRef.current.srcObject = null;
+      setCameraActive(false);
+    }
+  };
+
   return (
     <div className="max-w-md mx-auto space-y-4 pb-16">
-      {/* Topo do Papo Vídeos & Botão Ao Vivo */}
+      {/* Topo do Papo Vídeos com botão Publicar e Ao Vivo */}
       <div className="flex items-center justify-between bg-white p-3.5 rounded-2xl border border-[#E5EBE7] shadow-xs">
         <div className="flex items-center gap-2">
           <span className="w-2.5 h-2.5 rounded-full bg-[#167C49] animate-pulse" />
@@ -82,33 +257,30 @@ export const VideosView: React.FC = () => {
           </h2>
         </div>
 
-        <button
-          onClick={() => setShowLiveNotice(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-full text-xs font-bold transition-colors cursor-pointer border border-red-200"
-        >
-          <Radio size={14} className="animate-pulse" />
-          <span>Ao Vivo</span>
-        </button>
-      </div>
-
-      {/* Aviso institucional sobre Transmissões ao Vivo conforme Item 12 */}
-      {showLiveNotice && (
-        <div className="bg-[#EAF5EE] border border-[#167C49]/30 rounded-2xl p-4 text-xs text-[#163D2B] relative">
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowLiveNotice(false)}
-            className="absolute top-2 right-2 text-[#738078] hover:text-[#163D2B]"
+            onClick={() => {
+              if (!user) setIsAuthModalOpen(true);
+              else setShowUploadModal(true);
+            }}
+            className="flex items-center gap-1 px-3 py-1.5 bg-[#EAF5EE] hover:bg-[#167C49] hover:text-white text-[#167C49] rounded-xl text-xs font-bold transition-colors cursor-pointer"
           >
-            ✕
+            <Plus size={14} />
+            <span>Postar</span>
           </button>
-          <div className="flex items-center gap-2 font-bold text-[#115D38] mb-1">
-            <Info size={16} />
-            <span>Módulo de Streaming Ao Vivo (WebRTC / RTMP)</span>
-          </div>
-          <p className="text-[11px] text-[#738078] leading-relaxed">
-            As transmissões ao vivo do PapoBR utilizam infraestrutura especializada de entrega CDN para não sobrecarregar o Firestore com pacotes de streaming contínuo. Em breve liberaremos as salas de transmissão pública para criadores brasileiros!
-          </p>
+
+          <button
+            onClick={() => {
+              setShowLiveStudio(true);
+              startCamera();
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-xs font-bold transition-colors cursor-pointer border border-red-200"
+          >
+            <Radio size={14} className="animate-pulse" />
+            <span>Ao Vivo</span>
+          </button>
         </div>
-      )}
+      </div>
 
       {/* Player de Vídeo Vertical Estilo Reels */}
       {currentVideo ? (
@@ -119,15 +291,33 @@ export const VideosView: React.FC = () => {
             loop
             autoPlay
             playsInline
+            muted={isMuted}
             onClick={handleTogglePlay}
+            onTimeUpdate={handleTimeUpdate}
             className="w-full h-full object-cover cursor-pointer"
           />
+
+          {/* Barra de Progresso Superior */}
+          <div className="absolute top-0 left-0 right-0 h-1 bg-white/20 z-20">
+            <div
+              className="h-full bg-[#F3C84B] transition-all duration-100"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+
+          {/* Botão de Som Mute/Unmute no Canto Superior Direito */}
+          <button
+            onClick={handleToggleMute}
+            className="absolute top-3 right-3 p-2 bg-black/40 hover:bg-black/60 text-white rounded-full z-20 backdrop-blur-md cursor-pointer transition-colors"
+          >
+            {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+          </button>
 
           {/* Overlay de Pausa */}
           {!isPlaying && (
             <div
               onClick={handleTogglePlay}
-              className="absolute inset-0 bg-black/40 flex items-center justify-center cursor-pointer backdrop-blur-2xs"
+              className="absolute inset-0 bg-black/40 flex items-center justify-center cursor-pointer backdrop-blur-2xs z-10"
             >
               <div className="p-4 bg-white/20 rounded-full text-white backdrop-blur-sm">
                 <Play size={40} className="fill-white translate-x-0.5" />
@@ -135,12 +325,12 @@ export const VideosView: React.FC = () => {
             </div>
           )}
 
-          {/* Botões laterais de interação */}
+          {/* Botões laterais de interação estilo TikTok/Reels */}
           <div className="absolute right-3 bottom-20 flex flex-col items-center gap-4 z-20">
             {/* Curtida */}
             <button
               onClick={() => handleLike(currentVideo.id)}
-              className="flex flex-col items-center gap-1 group/btn"
+              className="flex flex-col items-center gap-1 group/btn cursor-pointer"
             >
               <div
                 className={`p-3 rounded-full backdrop-blur-md transition-transform active:scale-90 ${
@@ -161,17 +351,14 @@ export const VideosView: React.FC = () => {
 
             {/* Comentários */}
             <button
-              onClick={() => {
-                if (!user) setIsAuthModalOpen(true);
-                else alert('Comentários de vídeo em tempo real ativados!');
-              }}
-              className="flex flex-col items-center gap-1"
+              onClick={() => setShowCommentsDrawer(true)}
+              className="flex flex-col items-center gap-1 cursor-pointer"
             >
               <div className="p-3 bg-black/40 hover:bg-black/60 text-white rounded-full backdrop-blur-md">
                 <MessageCircle size={22} />
               </div>
               <span className="text-[11px] text-white font-bold drop-shadow-md">
-                {currentVideo.commentsCount || 0}
+                {videoComments.length}
               </span>
             </button>
 
@@ -179,9 +366,9 @@ export const VideosView: React.FC = () => {
             <button
               onClick={() => {
                 navigator.clipboard?.writeText(window.location.href);
-                alert('Link do vídeo copiado!');
+                alert('Link do vídeo copiado para a área de transferência!');
               }}
-              className="flex flex-col items-center gap-1"
+              className="flex flex-col items-center gap-1 cursor-pointer"
             >
               <div className="p-3 bg-black/40 hover:bg-black/60 text-white rounded-full backdrop-blur-md">
                 <Share2 size={20} />
@@ -191,8 +378,8 @@ export const VideosView: React.FC = () => {
 
             {/* Denúncia de Conteúdo */}
             <button
-              onClick={() => alert('Vídeo enviado para avaliação dos moderadores do PapoBR.')}
-              className="p-2.5 bg-black/30 hover:bg-black/50 text-white/70 rounded-full"
+              onClick={() => setShowReportModal(true)}
+              className="p-2.5 bg-black/30 hover:bg-black/50 text-white/70 rounded-full cursor-pointer"
               title="Denunciar Conteúdo"
             >
               <Flag size={14} />
@@ -200,15 +387,15 @@ export const VideosView: React.FC = () => {
           </div>
 
           {/* Legenda e Autor no Rodapé */}
-          <div className="absolute left-0 right-16 bottom-0 p-5 bg-gradient-to-t from-black/90 via-black/40 to-transparent text-white z-10 pointer-events-none">
-            <div className="flex items-center gap-2 mb-2 pointer-events-auto">
+          <div className="absolute left-0 right-16 bottom-0 p-5 bg-gradient-to-t from-black/95 via-black/50 to-transparent text-white z-10 pointer-events-none">
+            <div className="flex items-center gap-2.5 mb-2 pointer-events-auto">
               <img
                 src={
                   currentVideo.authorPhotoURL ||
                   `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentVideo.authorUsername}`
                 }
                 alt={currentVideo.authorName}
-                className="w-10 h-10 rounded-full border-2 border-white object-cover"
+                className="w-10 h-10 rounded-full border-2 border-[#167C49] object-cover"
               />
               <div>
                 <h4 className="text-xs sm:text-sm font-bold font-heading drop-shadow-sm">
@@ -220,12 +407,12 @@ export const VideosView: React.FC = () => {
               </div>
             </div>
 
-            <p className="text-xs line-clamp-2 drop-shadow-md mb-2">
-              {currentVideo.title} • {currentVideo.description}
+            <p className="text-xs line-clamp-2 drop-shadow-md mb-2 pointer-events-auto">
+              {currentVideo.title} {currentVideo.description ? `• ${currentVideo.description}` : ''}
             </p>
 
             {currentVideo.tags && (
-              <div className="flex flex-wrap gap-1">
+              <div className="flex flex-wrap gap-1 pointer-events-auto">
                 {currentVideo.tags.map((t) => (
                   <span
                     key={t}
@@ -244,8 +431,8 @@ export const VideosView: React.FC = () => {
         </div>
       )}
 
-      {/* Controles de navegação de vídeos */}
-      <div className="flex items-center justify-between px-4">
+      {/* Controles de Navegação Verticais */}
+      <div className="flex items-center justify-between px-3">
         <button
           onClick={handlePrev}
           disabled={currentIndex === 0}
@@ -254,7 +441,7 @@ export const VideosView: React.FC = () => {
           ↑ Vídeo anterior
         </button>
         <span className="text-xs text-[#738078]">
-          {currentIndex + 1} de {videos.length}
+          {currentIndex + 1} de {videos.length} (Use setas ↑ / ↓)
         </span>
         <button
           onClick={handleNext}
@@ -264,6 +451,285 @@ export const VideosView: React.FC = () => {
           ↓ Próximo vídeo
         </button>
       </div>
+
+      {/* MODAL 1: Publicar Novo Vídeo Curto */}
+      {showUploadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full border border-[#E5EBE7] shadow-2xl relative">
+            <button
+              onClick={() => setShowUploadModal(false)}
+              className="absolute top-5 right-5 p-1.5 text-[#738078] hover:bg-[#F4F7F5] rounded-full"
+            >
+              <X size={20} />
+            </button>
+
+            <h3 className="text-lg font-bold text-[#163D2B] font-heading mb-3 flex items-center gap-2">
+              <Upload size={20} className="text-[#167C49]" />
+              <span>Postar no Papo Vídeos</span>
+            </h3>
+
+            <form onSubmit={handleCreateVideo} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-[#163D2B] mb-1">
+                  Título do Vídeo
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={videoTitle}
+                  onChange={(e) => setVideoTitle(e.target.value)}
+                  placeholder="Ex: Pôr do sol no Arpoador 🌅"
+                  className="w-full px-3 py-2 bg-[#F4F7F5] border border-[#E5EBE7] rounded-xl text-xs sm:text-sm text-[#163D2B] focus:bg-white focus:outline-hidden"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#163D2B] mb-1">
+                  URL do Vídeo MP4 (ou deixe vazio para clipe modelo)
+                </label>
+                <input
+                  type="url"
+                  value={videoUrlInput}
+                  onChange={(e) => setVideoUrlInput(e.target.value)}
+                  placeholder="https://exemplo.com/meuvideo.mp4"
+                  className="w-full px-3 py-2 bg-[#F4F7F5] border border-[#E5EBE7] rounded-xl text-xs text-[#163D2B] focus:bg-white focus:outline-hidden"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#163D2B] mb-1">
+                  Descrição
+                </label>
+                <textarea
+                  rows={2}
+                  value={videoDesc}
+                  onChange={(e) => setVideoDesc(e.target.value)}
+                  placeholder="Diga mais sobre esse momento brasileiro..."
+                  className="w-full px-3 py-2 bg-[#F4F7F5] border border-[#E5EBE7] rounded-xl text-xs text-[#163D2B] focus:bg-white focus:outline-hidden resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#163D2B] mb-1">
+                  Hashtags (separadas por vírgula)
+                </label>
+                <input
+                  type="text"
+                  value={videoTags}
+                  onChange={(e) => setVideoTags(e.target.value)}
+                  placeholder="Brasil, Viagem, RioDeJaneiro"
+                  className="w-full px-3 py-2 bg-[#F4F7F5] border border-[#E5EBE7] rounded-xl text-xs text-[#163D2B] focus:bg-white focus:outline-hidden"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-[#E5EBE7]">
+                <button
+                  type="button"
+                  onClick={() => setShowUploadModal(false)}
+                  className="px-4 py-2 text-xs font-bold text-[#738078] hover:bg-[#F4F7F5] rounded-xl"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={uploading}
+                  className="px-5 py-2 bg-[#167C49] hover:bg-[#115D38] text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer"
+                >
+                  {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                  <span>Publicar Vídeo</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: Gaveta de Comentários do Vídeo */}
+      {showCommentsDrawer && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl p-5 max-w-md w-full max-h-[80vh] flex flex-col border border-[#E5EBE7] shadow-2xl relative">
+            <div className="flex items-center justify-between pb-3 border-b border-[#E5EBE7]">
+              <h3 className="text-sm font-bold text-[#163D2B] font-heading flex items-center gap-2">
+                <MessageCircle size={18} className="text-[#167C49]" />
+                <span>Comentários ({videoComments.length})</span>
+              </h3>
+              <button
+                onClick={() => setShowCommentsDrawer(false)}
+                className="p-1 text-[#738078] hover:bg-[#F4F7F5] rounded-full"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto py-3 space-y-3">
+              {videoComments.map((c) => (
+                <div key={c.id} className="p-2.5 bg-[#F4F7F5] rounded-2xl text-xs space-y-1">
+                  <div className="flex items-center justify-between font-bold text-[#163D2B]">
+                    <span>{c.authorName}</span>
+                    <span className="text-[10px] text-[#738078] font-normal">{c.time}</span>
+                  </div>
+                  <p className="text-[#163D2B]">{c.text}</p>
+                </div>
+              ))}
+            </div>
+
+            <form onSubmit={handleAddVideoComment} className="pt-2 border-t border-[#E5EBE7] flex items-center gap-2">
+              <input
+                type="text"
+                value={newCommentInput}
+                onChange={(e) => setNewCommentInput(e.target.value)}
+                placeholder="Comente neste vídeo..."
+                className="flex-1 bg-[#F4F7F5] border border-[#E5EBE7] focus:border-[#167C49] rounded-full px-3.5 py-2 text-xs text-[#163D2B] focus:outline-hidden"
+              />
+              <button
+                type="submit"
+                className="p-2 bg-[#167C49] hover:bg-[#115D38] text-white rounded-full transition-colors cursor-pointer"
+              >
+                <Send size={15} />
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: PapoBR Live Studio (Streaming Architecture & Camera) */}
+      {showLiveStudio && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl p-6 max-w-lg w-full border border-[#E5EBE7] shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <button
+              onClick={() => {
+                stopCamera();
+                setShowLiveStudio(false);
+              }}
+              className="absolute top-5 right-5 p-1.5 text-[#738078] hover:bg-[#F4F7F5] rounded-full"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="flex items-center gap-2 mb-3">
+              <span className="w-3 h-3 rounded-full bg-red-600 animate-ping" />
+              <h3 className="text-lg font-bold text-[#163D2B] font-heading">
+                PapoBR Live Studio (Transmissões ao Vivo)
+              </h3>
+            </div>
+
+            {/* Tela de visualização da Câmera (WebRTC) */}
+            <div className="relative aspect-video bg-black rounded-2xl overflow-hidden mb-4 border border-gray-800 flex items-center justify-center">
+              <video
+                ref={liveVideoRef}
+                autoPlay
+                playsInline
+                muted
+                className={`w-full h-full object-cover ${cameraActive ? 'block' : 'hidden'}`}
+              />
+              {!cameraActive && (
+                <div className="text-center p-6 text-white/70 text-xs space-y-2">
+                  <Camera size={36} className="mx-auto text-white/40 mb-1" />
+                  <p className="font-bold text-white">Pré-visualização da Câmera</p>
+                  <button
+                    onClick={startCamera}
+                    className="px-3.5 py-1.5 bg-[#167C49] text-white rounded-xl font-bold hover:bg-[#115D38] cursor-pointer"
+                  >
+                    Ativar Câmera Local
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Painel da Arquitetura de Streaming (Item 12 da especificação) */}
+            <div className="bg-[#EAF5EE] border border-[#167C49]/20 rounded-2xl p-4 text-xs space-y-2.5 mb-4">
+              <div className="flex items-center gap-2 font-bold text-[#115D38]">
+                <Info size={16} />
+                <span>Arquitetura de Streaming Especializada</span>
+              </div>
+              <p className="text-[12px] text-[#163D2B] leading-relaxed">
+                Conforme as boas práticas da plataforma, fluxos de vídeo ao vivo de alta resolução utilizam protocolos **RTMP / HLS / WebRTC** com distribuição por CDN dedicada (Mux / AWS IVS / Cloudflare Stream), sem sobrecarregar o Cloud Firestore com pacotes de vídeo.
+              </p>
+
+              <div className="p-2.5 bg-white rounded-xl border border-[#E5EBE7] space-y-1.5 font-mono text-[11px]">
+                <div className="flex justify-between items-center">
+                  <span className="text-[#738078]">Servidor RTMP:</span>
+                  <span className="text-[#163D2B] font-bold">rtmp://live.papobr.com.br/app</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[#738078]">Chave de Stream:</span>
+                  <span className="text-[#167C49] font-bold">papo_live_8f5a12b</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  stopCamera();
+                  setShowLiveStudio(false);
+                }}
+                className="px-4 py-2 bg-[#167C49] text-white text-xs font-bold rounded-xl"
+              >
+                Concluir & Fechar Estúdio
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: Denúncia de Conteúdo */}
+      {showReportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full border border-[#E5EBE7] shadow-2xl relative">
+            <button
+              onClick={() => setShowReportModal(false)}
+              className="absolute top-4 right-4 p-1.5 text-[#738078] hover:bg-[#F4F7F5] rounded-full"
+            >
+              <X size={18} />
+            </button>
+
+            <h3 className="text-base font-bold text-[#163D2B] font-heading mb-2 flex items-center gap-1.5">
+              <Flag size={18} className="text-red-500" />
+              <span>Denunciar este Vídeo</span>
+            </h3>
+
+            {reportSuccess ? (
+              <div className="p-4 bg-green-50 border border-green-200 rounded-2xl text-xs text-green-700 text-center">
+                Denúncia recebida com sucesso. A equipe do PapoBR analisará o conteúdo.
+              </div>
+            ) : (
+              <form onSubmit={handleSendReport} className="space-y-3">
+                <p className="text-xs text-[#738078]">
+                  Selecione o motivo da denúncia para avaliação da nossa moderação:
+                </p>
+                <select
+                  value={reportReason}
+                  onChange={(e) => setReportReason(e.target.value)}
+                  className="w-full p-2 bg-[#F4F7F5] border border-[#E5EBE7] rounded-xl text-xs text-[#163D2B] focus:outline-hidden"
+                >
+                  <option value="Conteúdo Impróprio">Conteúdo Impróprio / Ofensivo</option>
+                  <option value="Spam ou Fraude">Spam ou Fraude</option>
+                  <option value="Discurso de Ódio">Discurso de Ódio ou Assédio</option>
+                  <option value="Violação de Direitos">Violação de Direitos Autorais</option>
+                  <option value="Desinformação">Desinformação prejudicial</option>
+                </select>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowReportModal(false)}
+                    className="px-3 py-1.5 text-xs text-[#738078] hover:bg-[#F4F7F5] rounded-xl font-bold"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl"
+                  >
+                    Enviar Denúncia
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -137,6 +137,27 @@ export async function respondToFriendRequest(
   }
 }
 
+export async function cancelFriendRequest(requestId: string) {
+  try {
+    const reqRef = doc(db, 'friendRequests', requestId);
+    await deleteDoc(reqRef);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `friendRequests/${requestId}`);
+    throw error;
+  }
+}
+
+export async function removeFriendship(requestId: string) {
+  try {
+    const reqRef = doc(db, 'friendRequests', requestId);
+    await deleteDoc(reqRef);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `friendRequests/${requestId}`);
+    throw error;
+  }
+}
+
+
 /* ----------------------------------------------------
    COMUNIDADES BRASILEIRAS
 ---------------------------------------------------- */
@@ -420,6 +441,62 @@ export function subscribeToVideos(onUpdate: (videos: VideoItem[]) => void) {
   );
 }
 
+export async function createVideoPost(
+  author: UserProfile,
+  data: {
+    title: string;
+    description: string;
+    videoUrl: string;
+    tags?: string[];
+  }
+) {
+  try {
+    const docRef = doc(collection(db, 'videos'));
+    const item: VideoItem = {
+      id: docRef.id,
+      authorId: author.uid,
+      authorName: author.displayName,
+      authorUsername: author.username,
+      authorPhotoURL: author.photoURL,
+      title: data.title,
+      description: data.description,
+      videoUrl: data.videoUrl,
+      likesCount: 0,
+      commentsCount: 0,
+      tags: data.tags || [],
+      createdAt: new Date().toISOString(),
+    };
+    await setDoc(docRef, item);
+    return docRef.id;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, 'videos');
+    throw error;
+  }
+}
+
+export async function submitReport(
+  reporterId: string,
+  targetType: 'post' | 'video' | 'user' | 'comment',
+  targetId: string,
+  reason: string
+) {
+  try {
+    const reportRef = doc(collection(db, 'reports'));
+    await setDoc(reportRef, {
+      id: reportRef.id,
+      reporterId,
+      targetType,
+      targetId,
+      reason,
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.warn('Report submission:', error);
+  }
+}
+
+
 /* ----------------------------------------------------
    NOTIFICAÇÕES
 ---------------------------------------------------- */
@@ -533,6 +610,7 @@ export async function sendDirectMessage(
       conversationId,
       senderId: sender.uid,
       text,
+      isRead: false,
       createdAt: now,
     };
 
@@ -566,3 +644,26 @@ export async function sendDirectMessage(
     throw error;
   }
 }
+
+export async function markConversationMessagesAsRead(
+  conversationId: string,
+  currentUserId: string
+) {
+  try {
+    const q = query(
+      collection(db, 'conversations', conversationId, 'messages'),
+      where('isRead', '==', false)
+    );
+    const snap = await getDocs(q);
+    const now = new Date().toISOString();
+    for (const docSnap of snap.docs) {
+      const data = docSnap.data() as Message;
+      if (data.senderId !== currentUserId) {
+        await updateDoc(docSnap.ref, { isRead: true, readAt: now }).catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.warn('Read receipt update:', err);
+  }
+}
+

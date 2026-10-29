@@ -14,6 +14,7 @@ import {
   increment,
   onSnapshot,
   query,
+  where,
   orderBy,
   limit,
 } from 'firebase/firestore';
@@ -329,3 +330,47 @@ export async function deleteCommentFromPost(postId: string, commentId: string): 
     throw error;
   }
 }
+
+export async function updateCommentInPost(
+  postId: string,
+  commentId: string,
+  content: string
+): Promise<void> {
+  try {
+    const commentRef = doc(db, 'posts', postId, 'comments', commentId);
+    await updateDoc(commentRef, { content });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `posts/${postId}/comments/${commentId}`);
+    throw error;
+  }
+}
+
+export function subscribeToCommunityPosts(
+  communityId: string,
+  onUpdate: (posts: Post[]) => void
+) {
+  const q = query(
+    collection(db, 'posts'),
+    where('communityId', '==', communityId),
+    orderBy('createdAt', 'desc'),
+    limit(50)
+  );
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const posts: Post[] = [];
+      snapshot.forEach((docSnap) => {
+        posts.push({ ...docSnap.data(), id: docSnap.id } as Post);
+      });
+      onUpdate(posts);
+    },
+    () => {
+      // Graceful fallback without composite index
+      subscribeToPosts((all) => {
+        onUpdate(all.filter((p) => p.communityId === communityId));
+      });
+    }
+  );
+}
+
