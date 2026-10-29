@@ -24,6 +24,7 @@ export const AuthModal: React.FC = () => {
     isAuthModalOpen,
     setIsAuthModalOpen,
     signInWithGoogle,
+    signInAsDemoUser,
     signInWithEmail,
     signUpWithEmail,
     resetPassword,
@@ -60,7 +61,11 @@ export const AuthModal: React.FC = () => {
       await signInWithGoogle();
     } catch (err: unknown) {
       console.error(err);
-      setErrorMsg('Não foi possível entrar com o Google. Tente novamente.');
+      if (err instanceof Error) {
+        setErrorMsg(err.message);
+      } else {
+        setErrorMsg('Não foi possível entrar com o Google. Tente criar sua conta com e-mail ou use o acesso de teste abaixo.');
+      }
     } finally {
       setLoading(false);
     }
@@ -260,6 +265,16 @@ export const AuthModal: React.FC = () => {
                 />
               </svg>
               <span>Continuar com Google</span>
+            </button>
+
+            {/* Acesso rápido sem bloqueio de pop-up */}
+            <button
+              type="button"
+              onClick={() => signInAsDemoUser('Carlos Eduardo (PapoBR)', 'carloseduardo_br')}
+              className="w-full mt-2.5 flex items-center justify-center gap-2 py-2 px-3 bg-[#EAF5EE] hover:bg-[#167C49] hover:text-white text-[#167C49] text-xs font-bold rounded-2xl transition-colors cursor-pointer border border-[#167C49]/20"
+            >
+              <Sparkles size={14} className="text-[#F3C84B]" />
+              <span>⚡ Entrar Imediatamente (Acesso Rápido de Teste)</span>
             </button>
 
             <div className="relative my-4">

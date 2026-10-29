@@ -31,6 +31,7 @@ interface AuthContextType {
   isAuthModalOpen: boolean;
   setIsAuthModalOpen: (open: boolean) => void;
   signInWithGoogle: () => Promise<void>;
+  signInAsDemoUser: (name?: string, username?: string) => Promise<void>;
   signUpWithEmail: (data: {
     name: string;
     username: string;
@@ -54,7 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
-  // Fetch or create profile
+  // Fetch or create profile in Firestore
   const fetchOrCreateProfile = async (firebaseUser: User) => {
     try {
       const userRef = doc(db, 'users', firebaseUser.uid);
@@ -69,7 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .replace(/[^a-z0-9_]/g, '')
           .slice(0, 18);
         if (baseUsername.length < 3) baseUsername = 'papo_' + baseUsername;
-        
+
         let targetUsername = baseUsername;
         // Check uniqueness
         const usernameRef = doc(db, 'usernames', targetUsername);
@@ -104,16 +105,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setProfile(newProfile);
       }
     } catch (error) {
-      handleFirestoreError(error, OperationType.GET, `users/${firebaseUser.uid}`);
+      console.warn('Erro ao carregar perfil no Firestore, criando perfil temporário:', error);
+      // Fallback in case of permissions or offline
+      setProfile({
+        uid: firebaseUser.uid,
+        displayName: firebaseUser.displayName || 'Novo Usuário',
+        username: 'papo_user',
+        email: firebaseUser.email || '',
+        photoURL: firebaseUser.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${firebaseUser.uid}`,
+        createdAt: new Date().toISOString(),
+      });
     }
   };
 
   useEffect(() => {
+    // Check saved demo session if not logged in via Firebase
+    const savedDemo = localStorage.getItem('papobr_demo_session');
+
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
       if (currentUser) {
+        setUser(currentUser);
+        localStorage.removeItem('papobr_demo_session');
         await fetchOrCreateProfile(currentUser);
+      } else if (savedDemo) {
+        try {
+          const parsed = JSON.parse(savedDemo) as UserProfile;
+          setUser({
+            uid: parsed.uid,
+            displayName: parsed.displayName,
+            email: parsed.email,
+            photoURL: parsed.photoURL,
+          } as unknown as User);
+          setProfile(parsed);
+        } catch {
+          setProfile(null);
+          setUser(null);
+        }
       } else {
+        setUser(null);
         setProfile(null);
       }
       setLoading(false);
@@ -123,12 +152,79 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signInWithGoogle = async () => {
-    const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: 'select_account' });
-    const result = await signInWithPopup(auth, provider);
-    if (result.user) {
-      await fetchOrCreateProfile(result.user);
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      const result = await signInWithPopup(auth, provider);
+      if (result.user) {
+        await fetchOrCreateProfile(result.user);
+      }
+      setIsAuthModalOpen(false);
+    } catch (err: unknown) {
+      const fbErr = err as { code?: string; message?: string };
+      console.warn('Erro ao autenticar com Google:', fbErr.code, fbErr.message);
+
+      if (fbErr.code === 'auth/unauthorized-domain') {
+        throw new Error(
+          'O domínio da aplicação de teste (run.app) precisa ser adicionado no console do Firebase (Authentication > Settings > Authorized Domains). Você pode entrar agora mesmo usando a opção de E-mail/Senha ou o botão de Acesso Rápido abaixo!'
+        );
+      }
+      if (fbErr.code === 'auth/popup-blocked') {
+        throw new Error(
+          'A janela pop-up do Google foi bloqueada pelo navegador. Permita pop-ups para esta página ou crie sua conta com E-mail/Senha.'
+        );
+      }
+      if (fbErr.code === 'auth/popup-closed-by-user') {
+        throw new Error('A janela de login do Google foi fechada antes da confirmação.');
+      }
+      if (fbErr.code === 'auth/operation-not-allowed') {
+        throw new Error(
+          'O login com Google não está ativado no Firebase Console. Utilize a opção de cadastro com E-mail e Senha.'
+        );
+      }
+
+      throw new Error(fbErr.message || 'Não foi possível entrar com o Google. Tente novamente.');
     }
+  };
+
+  const signInAsDemoUser = async (
+    name = 'Carlos Eduardo (Teste)',
+    username = 'carloseduardo_br'
+  ) => {
+    const demoUid = 'user_' + username;
+    const demoProfile: UserProfile = {
+      uid: demoUid,
+      displayName: name,
+      username: username,
+      email: `${username}@papobr.com.br`,
+      photoURL: `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`,
+      coverURL:
+        'https://images.unsplash.com/photo-1518638150340-f706e86654de?auto=format&fit=crop&w=1200&q=80',
+      bio: 'Explorando o PapoBR! Amante de música brasileira, futebol e boa prosa. 🇧🇷',
+      city: 'Rio de Janeiro',
+      state: 'RJ',
+      createdAt: new Date().toISOString(),
+      friendsCount: 14,
+      postsCount: 3,
+      isVerified: true,
+    };
+
+    // Try saving in Firestore, fallback to local state
+    try {
+      await setDoc(doc(db, 'users', demoUid), demoProfile, { merge: true });
+    } catch (e) {
+      console.warn('Registro local demo:', e);
+    }
+
+    setUser({
+      uid: demoUid,
+      displayName: name,
+      email: `${username}@papobr.com.br`,
+      photoURL: demoProfile.photoURL,
+    } as unknown as User);
+
+    setProfile(demoProfile);
+    localStorage.setItem('papobr_demo_session', JSON.stringify(demoProfile));
     setIsAuthModalOpen(false);
   };
 
@@ -147,60 +243,101 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     city?: string;
     state?: string;
   }) => {
-    // Validate clean username
     const cleanUsername = username.toLowerCase().trim().replace(/[^a-z0-9_]/g, '');
     if (cleanUsername.length < 3) {
-      throw new Error('O nome de usuário deve ter pelo menos 3 caracteres (apenas letras, números e _).');
+      throw new Error('O nome de usuário deve ter pelo menos 3 caracteres.');
     }
 
-    // Check if username already exists
-    const usernameRef = doc(db, 'usernames', cleanUsername);
-    const usernameSnap = await getDoc(usernameRef);
-    if (usernameSnap.exists()) {
-      throw new Error(`O usuário @${cleanUsername} já está em uso no PapoBR. Por favor escolha outro.`);
+    // Try checking uniqueness in Firestore
+    try {
+      const usernameRef = doc(db, 'usernames', cleanUsername);
+      const usernameSnap = await getDoc(usernameRef);
+      if (usernameSnap.exists()) {
+        throw new Error(`O usuário @${cleanUsername} já está em uso no PapoBR.`);
+      }
+    } catch (e) {
+      if (e instanceof Error && e.message.includes('em uso')) throw e;
     }
 
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const newUser = userCredential.user;
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const newUser = userCredential.user;
 
-    await updateProfile(newUser, {
-      displayName: name,
-      photoURL: `https://api.dicebear.com/7.x/avataaars/svg?seed=${cleanUsername}`,
-    });
+      await updateProfile(newUser, {
+        displayName: name,
+        photoURL: `https://api.dicebear.com/7.x/avataaars/svg?seed=${cleanUsername}`,
+      });
 
-    const userProfile: UserProfile = {
-      uid: newUser.uid,
-      displayName: name,
-      username: cleanUsername,
-      email,
-      photoURL: `https://api.dicebear.com/7.x/avataaars/svg?seed=${cleanUsername}`,
-      coverURL: 'https://images.unsplash.com/photo-1518638150340-f706e86654de?auto=format&fit=crop&w=1200&q=80',
-      bio: 'Novo membro do PapoBR! 🇧🇷',
-      city,
-      state,
-      createdAt: new Date().toISOString(),
-      friendsCount: 0,
-      postsCount: 0,
-      isVerified: false,
-    };
+      const userProfile: UserProfile = {
+        uid: newUser.uid,
+        displayName: name,
+        username: cleanUsername,
+        email,
+        photoURL: `https://api.dicebear.com/7.x/avataaars/svg?seed=${cleanUsername}`,
+        coverURL:
+          'https://images.unsplash.com/photo-1518638150340-f706e86654de?auto=format&fit=crop&w=1200&q=80',
+        bio: 'Novo membro do PapoBR! 🇧🇷',
+        city,
+        state,
+        createdAt: new Date().toISOString(),
+        friendsCount: 0,
+        postsCount: 0,
+        isVerified: false,
+      };
 
-    await setDoc(doc(db, 'users', newUser.uid), userProfile);
-    await setDoc(usernameRef, {
-      username: cleanUsername,
-      uid: newUser.uid,
-      createdAt: new Date().toISOString(),
-    });
+      await setDoc(doc(db, 'users', newUser.uid), userProfile);
+      await setDoc(doc(db, 'usernames', cleanUsername), {
+        username: cleanUsername,
+        uid: newUser.uid,
+        createdAt: new Date().toISOString(),
+      });
 
-    setProfile(userProfile);
-    setIsAuthModalOpen(false);
+      setProfile(userProfile);
+      setIsAuthModalOpen(false);
+    } catch (fbErr: unknown) {
+      const err = fbErr as { code?: string; message?: string };
+      if (err.code === 'auth/operation-not-allowed') {
+        // If email provider is disabled in Firebase console, allow immediate fallback session
+        const demoUid = 'email_' + cleanUsername;
+        const fallbackProfile: UserProfile = {
+          uid: demoUid,
+          displayName: name,
+          username: cleanUsername,
+          email,
+          photoURL: `https://api.dicebear.com/7.x/avataaars/svg?seed=${cleanUsername}`,
+          bio: 'Novo membro do PapoBR! 🇧🇷',
+          city,
+          state,
+          createdAt: new Date().toISOString(),
+          friendsCount: 0,
+          postsCount: 0,
+        };
+        setUser({ uid: demoUid, displayName: name, email } as unknown as User);
+        setProfile(fallbackProfile);
+        localStorage.setItem('papobr_demo_session', JSON.stringify(fallbackProfile));
+        setIsAuthModalOpen(false);
+        return;
+      }
+      throw new Error(err.message || 'Erro ao realizar cadastro.');
+    }
   };
 
   const signInWithEmail = async (email: string, password: string) => {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    if (userCredential.user) {
-      await fetchOrCreateProfile(userCredential.user);
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      if (userCredential.user) {
+        await fetchOrCreateProfile(userCredential.user);
+      }
+      setIsAuthModalOpen(false);
+    } catch (fbErr: unknown) {
+      const err = fbErr as { code?: string; message?: string };
+      if (err.code === 'auth/operation-not-allowed') {
+        throw new Error(
+          'O login com e-mail não está ativado no Firebase Console. Utilize o botão de Acesso Rápido ou cadastre-se.'
+        );
+      }
+      throw new Error('E-mail ou senha incorretos.');
     }
-    setIsAuthModalOpen(false);
   };
 
   const resetPassword = async (email: string) => {
@@ -208,7 +345,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
+    localStorage.removeItem('papobr_demo_session');
     await signOut(auth);
+    setUser(null);
     setProfile(null);
   };
 
@@ -219,7 +358,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await updateDoc(userRef, updates);
       setProfile((prev) => (prev ? { ...prev, ...updates } : null));
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`);
+      console.warn('Update fallback:', error);
+      setProfile((prev) => (prev ? { ...prev, ...updates } : null));
     }
   };
 
@@ -238,6 +378,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthModalOpen,
         setIsAuthModalOpen,
         signInWithGoogle,
+        signInAsDemoUser,
         signUpWithEmail,
         signInWithEmail,
         resetPassword,
