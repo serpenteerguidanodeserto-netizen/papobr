@@ -1,0 +1,246 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Public and account profile of a PapoBR user",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "displayName": { "type": "string", "maxLength": 100 },
+        "username": { "type": "string", "maxLength": 30, "pattern": "^[a-z0-9_]{3,30}$" },
+        "email": { "type": "string", "maxLength": 255 },
+        "photoURL": { "type": "string", "maxLength": 2048 },
+        "coverURL": { "type": "string", "maxLength": 2048 },
+        "bio": { "type": "string", "maxLength": 500 },
+        "city": { "type": "string", "maxLength": 100 },
+        "state": { "type": "string", "maxLength": 2 },
+        "createdAt": { "type": "string" },
+        "friendsCount": { "type": "number" },
+        "postsCount": { "type": "number" }
+      },
+      "required": ["uid", "displayName", "username", "createdAt"]
+    },
+    "Username": {
+      "title": "Username",
+      "description": "Unique username registry to avoid duplicates",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string", "maxLength": 30 },
+        "uid": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["username", "uid"]
+    },
+    "Post": {
+      "title": "Post",
+      "description": "User publication in the feed or in a community",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 100 },
+        "authorUsername": { "type": "string", "maxLength": 30 },
+        "authorPhotoURL": { "type": "string", "maxLength": 2048 },
+        "content": { "type": "string", "maxLength": 5000 },
+        "imageUrls": { "type": "array" },
+        "likesCount": { "type": "number" },
+        "commentsCount": { "type": "number" },
+        "communityId": { "type": "string", "maxLength": 128 },
+        "location": { "type": "string", "maxLength": 100 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["authorId", "authorName", "content", "createdAt"]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "Comment on a publication",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "postId": { "type": "string", "maxLength": 128 },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 100 },
+        "authorUsername": { "type": "string", "maxLength": 30 },
+        "authorPhotoURL": { "type": "string", "maxLength": 2048 },
+        "content": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["postId", "authorId", "authorName", "content", "createdAt"]
+    },
+    "Like": {
+      "title": "Like",
+      "description": "User like on a publication",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "postId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "postId", "createdAt"]
+    },
+    "FriendRequest": {
+      "title": "FriendRequest",
+      "description": "Friend request between two users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "senderId": { "type": "string", "maxLength": 128 },
+        "receiverId": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "enum": ["pending", "accepted", "rejected"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["senderId", "receiverId", "status", "createdAt"]
+    },
+    "Conversation": {
+      "title": "Conversation",
+      "description": "Private direct conversation between users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "participantIds": { "type": "array" },
+        "lastMessageText": { "type": "string", "maxLength": 1000 },
+        "lastMessageSenderId": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["participantIds", "updatedAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Direct message in a conversation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "conversationId": { "type": "string", "maxLength": 128 },
+        "senderId": { "type": "string", "maxLength": 128 },
+        "text": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["conversationId", "senderId", "text", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "User notification for events",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "recipientId": { "type": "string", "maxLength": 128 },
+        "actorId": { "type": "string", "maxLength": 128 },
+        "actorName": { "type": "string", "maxLength": 100 },
+        "actorPhotoURL": { "type": "string", "maxLength": 2048 },
+        "type": { "type": "string" },
+        "entityId": { "type": "string", "maxLength": 128 },
+        "message": { "type": "string", "maxLength": 500 },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["recipientId", "actorId", "type", "createdAt"]
+    },
+    "Community": {
+      "title": "Community",
+      "description": "Community or group inside PapoBR",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "imageURL": { "type": "string", "maxLength": 2048 },
+        "coverURL": { "type": "string", "maxLength": 2048 },
+        "category": { "type": "string", "maxLength": 50 },
+        "creatorId": { "type": "string", "maxLength": 128 },
+        "membersCount": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["name", "description", "creatorId", "createdAt"]
+    },
+    "MarketplaceItem": {
+      "title": "MarketplaceItem",
+      "description": "Item listed in PapoBR marketplace",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "sellerId": { "type": "string", "maxLength": 128 },
+        "sellerName": { "type": "string", "maxLength": 100 },
+        "sellerPhotoURL": { "type": "string", "maxLength": 2048 },
+        "title": { "type": "string", "maxLength": 150 },
+        "description": { "type": "string", "maxLength": 2500 },
+        "price": { "type": "number" },
+        "category": { "type": "string", "maxLength": 50 },
+        "city": { "type": "string", "maxLength": 100 },
+        "state": { "type": "string", "maxLength": 2 },
+        "imageUrls": { "type": "array" },
+        "status": { "type": "string", "enum": ["active", "sold"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["sellerId", "title", "price", "createdAt"]
+    },
+    "VideoItem": {
+      "title": "VideoItem",
+      "description": "Short video post in Papo Vídeos",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 100 },
+        "authorUsername": { "type": "string", "maxLength": 30 },
+        "authorPhotoURL": { "type": "string", "maxLength": 2048 },
+        "title": { "type": "string", "maxLength": 150 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "videoUrl": { "type": "string", "maxLength": 2048 },
+        "likesCount": { "type": "number" },
+        "commentsCount": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["authorId", "authorName", "videoUrl", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User public and personal profile data"
+    },
+    "/usernames/{username}": {
+      "schema": "Username",
+      "description": "Unique username reservations"
+    },
+    "/posts/{postId}": {
+      "schema": "Post",
+      "description": "Feed and community publications"
+    },
+    "/posts/{postId}/comments/{commentId}": {
+      "schema": "Comment",
+      "description": "Comments attached to posts"
+    },
+    "/posts/{postId}/likes/{userId}": {
+      "schema": "Like",
+      "description": "User likes on a post"
+    },
+    "/friendRequests/{requestId}": {
+      "schema": "FriendRequest",
+      "description": "Friend request invitations"
+    },
+    "/conversations/{conversationId}": {
+      "schema": "Conversation",
+      "description": "Private messaging threads"
+    },
+    "/conversations/{conversationId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Messages inside conversation threads"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "User notifications"
+    },
+    "/communities/{communityId}": {
+      "schema": "Community",
+      "description": "PapoBR community groups"
+    },
+    "/marketplace/{itemId}": {
+      "schema": "MarketplaceItem",
+      "description": "Classified marketplace advertisements"
+    },
+    "/videos/{videoId}": {
+      "schema": "VideoItem",
+      "description": "Short community video clips"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "PapoBR - Rede Social Brasileira",
+  "description": "O Brasil se encontra aqui. Rede social brasileira moderna, vibrante e comunitária.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
